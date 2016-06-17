@@ -1,0 +1,326 @@
+---
+title: "orlando"
+author: "Joe Willage"
+date: "June 16, 2016"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+I want to begin by saying that what happened in Orlando is a tragedy. Any shooting is simultaneously devastating and angering, but one targeted at a specific community seems to add an extra layer of disgust. I also spent 24 years of my life in Florida, a majority of my family and friends are there. Thankfully, no one I know personally was hurt, but I have friends who lost people they cared about.  
+
+It was with a heavy heart that I put this work together. The tweets here are more than just data points. It's not people talking about sports or cat videos. It's the unfolding of a tragedy, wherein an enormous amount of lives were lost. This analysis is an attempt to understand how news of the shooting spread on Twitter.  
+
+By understanding how national headlines like this spread across the internet, we gain a better understanding of how to to disseminate news in an emergency. The fact that Pulse *tweeted* during the attack for everyone to run from the club, is telling.  
+
+The analysis explores the use of the #orlando hashtag in the moments before and hours after the attack.  
+
+```{r}
+library(knitr)
+opts_chunk$set(echo = TRUE, cache = TRUE, cache.path = "cache/", 
+               fig.path = "figure/", fig.width = 7, fig.height = 7)
+```
+
+```{r libs}
+library(twitteR)
+library(lubridate)       
+library(ggplot2)
+library(scales)
+```
+
+```{r eval = F}
+setup_twitter_oauth(readline("consumer.key"),
+                    readline("consumer.secret"),
+                    readline("access.token"),
+                    readline("access.secret"))
+# tweets prior 6/12 2:09, when attack began
+o.prior <- searchTwitter("#orlando", n=1000, maxID = "741875325752233985")
+```
+
+```{r include = F}
+o.prior <- readRDS("rds/o.prior.rds")
+```
+
+### Prior to the attack###
+
+```{r prior}
+created.prior <- as.POSIXct(sapply(o.prior, function(x) x$created), origin = "1970-01-01")
+df.prior <- data.frame(created.prior)
+ggplot(data = df.prior, aes(created.prior, ..count..)) + 
+  geom_histogram(binwidth = 60 * 60, fill = "dodgerblue", color = "black") +
+  theme_light() +
+  theme(
+    axis.text.x=element_text(angle=45, hjust=1, vjust=1)
+  ) +
+  scale_y_continuous(limits = c(0, 155), expand= c(0, 0)) + 
+  labs(x = "time", y = "tweets per hour", 
+       title = "#orlando tweets per hour over time, morning of 6/12")
+
+ggplot(data = df.prior, aes(created.prior, ..count..)) + 
+  geom_histogram(binwidth = 60, fill = "dodgerblue") +
+  theme_light() +
+  theme(
+    axis.text.x=element_text(angle=45, hjust=1, vjust=1)
+  ) + 
+  scale_y_continuous(limits = c(0, 15), expand= c(0, 0)) + 
+  labs(x = "time", y = "tweets per minute", 
+       title = "#orlando tweets per minute over time, morning of 6/12")
+
+```
+
+Between 10pm - 2am, tweets with '#orlando' were coming in at a rate of 
+`r round(mean(table(hour(created.prior))[-c(3:5)]), 0)` tweets per hour, and 
+`r round(mean(table(paste(hour(created.prior), minute(created.prior)))), 1)` tweets per minute (tpm). 
+
+### During and after the attack###
+
+```{r eval = F}
+# tweets post 6/12 2:09
+o.post <- searchTwitter("#orlando", n=1000, maxID = "741897285752233985")
+```
+
+```{r include = F}
+o.post <- readRDS("rds/o.post.rds")
+```
+
+```{r post-1000}
+created.post <- as.POSIXct(sapply(o.post, function(x) x$created), origin = "1970-01-01")
+hour(created.post) <- hour(created.post) - 4
+df.post <- data.frame(created.post)
+ggplot(data = df.post, aes(created.post, ..count..)) + 
+  geom_histogram(binwidth = 60, fill = "dodgerblue") +
+  theme_light() + 
+  theme(
+    axis.text.x=element_text(angle=45, hjust=1, vjust=1)
+  ) +
+  scale_y_continuous(limits = c(0, 55), expand= c(0, 0)) + 
+  scale_x_datetime(breaks = date_breaks("10 min"), labels = date_format("%H:%M")) +
+  labs(x = "time", y = "tweets per minute", 
+       title = "#orlando tweets per minute over time, morning of 6/12")
+```
+
+The 1,000 tweets *prior* to the attack occurred in a span of `r round(created.prior[1] - created.prior[1000], 1)` hours, whereas *post*-attack, 1,000 tweets racked up in `r round(created.post[1] - created.post[1000], 1)` hours. 
+
+To measure the rate of growth, we'll compare the ratio of tpm from one minute to the next. 
+Let's see all the minutes with an increase of at least 50% tweets per minute.  
+
+```{r}
+times <- table(paste0((hour(created.post) + 4) %% 24, ":", 
+                      formatC(minute(created.post), width = 2, flag = "0")))
+times <- data.frame(times)
+times$increase <- c(NA, times[2:nrow(times), "Freq"] / times[1:nrow(times)-1, "Freq"])
+times <- times[complete.cases(times), ]
+names(times)[1:2] <- c("time", "tweets")
+print(times[times$increase >= 1.5, ], row.names = F)
+```
+
+We'll focus on the rows at 3:06 am and beyond, where the number of #orlando tweets is greater than 5. Now let's try to zero in on these large jumps in tweets per minute, and determine how they happened. The process will be looking at the tweets created in the minute of interest as well as the minute prior, and examine which ones had high numbers of favorites or retweets. The idea is to pinpoint which new tweets are catching wind.  
+
+For instance, the first large jump in tpm was between 3:05 - 3:06, where there went from 5 tweets mentioning #orlando to 11. We'll examine the tweets in that two minute span.  
+
+```{r}
+influencers <- data.frame()
+for (i in 1:length(o.post)) {  
+  ct <- as.POSIXct(o.post[[i]]$created, origin = "1970-01-01")
+  # searching for tweets created at 3:05 or 3:06, adjust tz from UTC to ET by subtracting 4
+  if (hour(ct) - 4 == 3 & (minute(ct) == 5 | minute(ct) == 6)) {
+    influencers <- rbind(influencers, cbind(o.post[[i]]$screenName, o.post[[i]]$id,
+                                            o.post[[i]]$retweetCount, o.post[[i]]$favoriteCount))
+  }
+}
+names(influencers) <- c("screenname", "twetId", "rt", "fav")
+```
+
+```{r, eval = F}
+# enrich screennames with follower count
+users <- lookupUsers(influencers$screenname)
+```
+
+```{r, include = F}
+users <- readRDS("rds/users.rds")
+```
+
+```{r}
+influencers$followersCount <- NULL
+for (i in 1:nrow(influencers)) {
+  influencers[i, "followers"] <- users[[i]]$followersCount
+}
+influencers
+```
+
+Now we have a list of the #orlando tweets from 3:05 - 3:06. The big one here is clearly @GayPatriot. While their tweet may have only received 68 RTs, they have over 53K followers. And the tweet turns out to be a retweet by Stewart Moore, a reporter with WESH Orlando. 
+
+The next highest follower count belongs to @m1cvv, Micky Welch, who has 8,200 followers. That handle *is* actually a news correspondent. However, the tweet again turns out to be a RT from Stewart Moore. As an aside, Welch's first tweet on the attack was an original tweet linking to Moore's Facebook at 2:40 am, but it did not use the #orlando hashtag. Welch continued tweeting about the tragedy until around 4:40 am.  
+
+The third most followed user on the list is Moore himself, @Stewartmoore. Moore live-tweeted coverage **all day**, from 2:40 am to 10:29 pm, including a 9:22 am tweet to @orlandohealth hospitals offering blood. 
+
+So that's the perspective from users with the most followers, who we often consider influencers. Another metric we typically look at with social, is the number of interactions: which tweets are the most favorited and retweeted? The top tweet in the group, with 2,774 RTs was about the shooting of Christina Grimmie the day prior. Then we have three tweets with exactly 1,516 RTs. It seems odd that all three tweets have the same number of RTs. As it turns out, that RT number is how many retweets *currently* exist. And it so happens that all 3 of those tweets are Stewart Moore retweets (well, 2 RTs + the original). Any way you slice it, Moore was the one responsible for spreading the initial word, with respect to the #orlando hashtag. 
+
+Focusing back on tweets per minute, the next major increase for #orlando happened 7 minutes later, at 3:13. We'll reapply the above process and check out all the users that tweet about #orlando between 3:12 - 3:13.
+
+```{r}
+influencers.313 <- data.frame()
+for (i in 1:length(o.post)) {  
+  ct <- as.POSIXct(o.post[[i]]$created, origin = "1970-01-01")
+  if (hour(ct)-4 == 3 & (minute(ct) == 12 | minute(ct) == 13)) {
+    influencers.313 <- rbind(influencers.313, cbind(o.post[[i]]$screenName, o.post[[i]]$id,
+                                            o.post[[i]]$retweetCount, o.post[[i]]$favoriteCount))
+  }
+}
+names(influencers.313) <- c("screenname", "twetId", "rt", "fav")
+```
+
+```{r, eval = F} 
+users.313 <- lookupUsers(as.character(influencers.313$screenname))
+```
+
+```{r, include = F} 
+users.313 <- readRDS("rds/users.313.rds")
+```
+
+```{r} 
+users.313.df <- NULL
+for (i in 1:length(users.313)) {
+  users.313.df <- rbind(users.313.df, cbind(users.313[[i]]$screenName, 
+                                            users.313[[i]]$followersCount))
+}
+users.313.df <- as.data.frame(users.313.df, stringsAsFactors = F)
+names(users.313.df) <- c("screenname", "followersCount")
+users.313.df$followersCount <- as.numeric(users.313.df$followersCount)
+
+influencers.313 <- merge(influencers.313, users.313.df)
+tail(influencers.313[order(influencers.313$followersCount), ], 10)
+```
+
+Above are the top 10 most followed handles in the group. All those tweets with 1,516 RTs are people retweeting Moore. The other common tweets seen throughout the full 3:12 - 3:13 list have 442 and 188 retweets. Those respectively belong to a CBS freelancer, Joanna Bouras, and Stewart Moore. 
+
+All of the analysis so far was on the 1,000 #orlando tweets following 2:09 am, a span of `r round(created.post[1] - created.post[1000], 1)` hours. Now we expand to look at the 10,000 tweets mentioning #orlando after 3/12 2:09 am. 
+
+```{r eval = F}
+tweets <- searchTwitter("#orlando", n=10000, maxID = "741925325752233985", 
+                        sinceID = "741875325752233985")
+```
+
+```{r, include = F}
+tweets <- readRDS("rds/tweets.rds")
+```
+
+```{r post-10k}
+created <- as.POSIXct(sapply(tweets, function(x) x$created), origin = "1970-01-01")
+df <- data.frame(created)
+hour(df$created) <- hour(df$created) - 4
+df$highlight <- FALSE
+df[7700:9009, "highlight"] <- TRUE
+ggplot(data = df, aes(created, ..count..)) + 
+  geom_histogram(binwidth = 60, aes(fill = highlight)) +
+  theme_light() + 
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+    legend.position = "none"
+  ) +
+  scale_y_continuous(limits = c(0, 125), expand= c(0, 0)) + 
+  scale_x_datetime(breaks = date_breaks("10 min"), labels = date_format("%H:%M")) +
+  scale_fill_manual(values = c("grey", "dodgerblue")) +
+  labs(x = "time", y = "tweets per minute", 
+       title = "#orlando tweets per minute over time, morning of 6/12")
+```
+
+10,000 #orlando tweets after 2:09 am are logged in a span of `r round(created[1] - created[9864], 1)` hours. Now we have a period up to 5:25. Most of the tpm increase appears to happen between 3:35 and 3:55, as highlighted in the graph. Again, we use the rate of tpm compared to the previous minute. 
+
+```{r}
+times <- table(paste0(hour(created), ":", formatC(minute(created), width = 2, flag = "0")))
+times <- data.frame(times)
+times$increase <- c(NA, times[2:nrow(times), "Freq"] / times[1:nrow(times)-1, "Freq"])
+times <- times[complete.cases(times), ]
+names(times)[1:2] <- c("time", "tweets")
+times[60:85, ]
+```
+
+The only time in the steep curve (and through the rest of the data) when the rate increases by at least 50% is at 3:45, with an increase from 42 to 64 tpm. We still see increases at a less steep rate through 3:55, where it plateaus at about `r round(mean(times[70:nrow(times), "tweets"]),0)` tpm. Exploring that jump at 3:45 we see the following...
+
+```{r}
+influencers.345 <- NULL
+for (i in 1:length(tweets)) {  
+  ct <- as.POSIXct(tweets[[i]]$created, origin = "1970-01-01")
+  if (hour(ct) - 4 == 3 & (minute(ct) == 44 | minute(ct) == 45)) {
+    influencers.345 <- rbind(influencers.345, cbind(tweets[[i]]$screenName, 
+                                                    tweets[[i]]$id,
+                                                    tweets[[i]]$retweetCount,
+                                                    tweets[[i]]$favoriteCount))
+  }
+}
+influencers.345 <- as.data.frame(influencers.345, stringsAsFactors = F)
+names(influencers.345) <- c("screenname", "twetId", "rt", "fav")
+influencers.345$rt <- as.numeric(influencers.345$rt)
+```
+
+```{r, eval = F} 
+users.345 <- lookupUsers(as.character(influencers.345$screenname))
+```
+
+```{r, include = F} 
+users.345 <- readRDS("rds/users.345.rds")
+```
+
+```{r} 
+users.345.df <- NULL
+for (i in 1:length(users.345)) {
+  users.345.df <- rbind(users.345.df, cbind(users.345[[i]]$screenName, 
+                                            users.345[[i]]$followersCount))
+}
+users.345.df <- as.data.frame(users.345.df, stringsAsFactors = F)
+names(users.345.df) <- c("screenname", "followersCount")
+users.345.df$followersCount <- as.numeric(users.345.df$followersCount)
+
+influencers.345 <- merge(influencers.345, users.345.df)
+tail(influencers.345[order(influencers.345$followersCount), ], 10)
+```
+
+Again there is a list of tweeters largely dominated by Moore retweets (the rows with 1516 or 442 as the rt value). The one exception here is @SkyNewsBreak, run by Sky News in London. @SkyNewsBreak has over 2 million followers, and their post at 3:45 received 139 RTs to date. It's clear that Sky News' tweet had immediate impact: their tweet accounts for `r nrow(influencers.345[influencers.345$rt == 139,])` of the `r nrow(influencers.345)` #orlando tweets between 3:44 - 3:45 (6 RTs + the 1 original) . It's worth mentioning that the time in London was 8:45 am, and Sky News had the opportunity to reach many more followers than US authors. 
+
+The final tpm jump we'll explore is the jump from 3:48 - 3:49, which had a 39% tpm increase. 
+
+
+```{r}
+influencers.349 <- NULL
+for (i in 1:length(tweets)) {  
+  ct <- as.POSIXct(tweets[[i]]$created, origin = "1970-01-01")
+  if (hour(ct)-4 == 3 & (minute(ct) == 48 | minute(ct) == 49)) {
+    influencers.349 <- rbind(influencers.349, cbind(tweets[[i]]$screenName, 
+                                                    tweets[[i]]$id,
+                                                    tweets[[i]]$retweetCount,
+                                                    tweets[[i]]$favoriteCount))
+  }
+}
+influencers.349 <- as.data.frame(influencers.349, stringsAsFactors = F)
+names(influencers.349) <- c("screenname", "twetId", "rt", "fav")
+influencers.349$rt <- as.numeric(influencers.349$rt)
+```
+
+```{r, eval = F} 
+users.349 <- lookupUsers(as.character(influencers.349$screenname))
+```
+
+```{r, include = F} 
+users.349 <- readRDS("rds/users.349.rds")
+```
+
+```{r} 
+users.349.df <- NULL
+for (i in 1:length(users.313)) {
+  users.349.df <- rbind(users.349.df, cbind(users.349[[i]]$screenName, 
+                                            users.349[[i]]$followersCount))
+}
+users.349.df <- as.data.frame(users.349.df, stringsAsFactors = F)
+names(users.349.df) <- c("screenname", "followersCount")
+users.349.df$followersCount <- as.numeric(users.349.df$followersCount)
+
+influencers.349 <- merge(influencers.349, users.349.df)
+tail(influencers.349[order(influencers.349$followersCount), ], 10)
+```
+
+We still see a lot of the Moore 1516 RTs on this list. The user with the most followers here is @Nettaaaaaaaa, civil rights activist Johnetta Elzie, with over 133K followers. Then there are 3  tweets by @WESH, who has 109K followers. WESH is the Orlando news station that Moore reports for. Unsurprisingly, we see 3 Moore retweets.  
+
+The work here only looked at tweets containing the #orlando hashtag. News outlets like CNN and WSJ tweeted the event without hashtagging it. It's possible that may paint a different picture, but this is the one of #orlando.  
+
+When I started this work, I wasn't sure what I would find. I imagined there would be a big breaking tweet by the Orlando Sentinel or some news organization. It turns out, I found the story of a local hero, working around the clock to not just spread the news, but also spread humanitarianism in a time of need. And that's what it's all about.  
