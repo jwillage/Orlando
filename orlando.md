@@ -20,21 +20,7 @@ opts_chunk$set(echo = TRUE, cache = TRUE, cache.path = "cache/",
 
 ```r
 library(twitteR)
-library(lubridate)       
-```
-
-```
-## 
-## Attaching package: 'lubridate'
-```
-
-```
-## The following object is masked from 'package:base':
-## 
-##     date
-```
-
-```r
+library(lubridate)  
 library(ggplot2)
 library(scales)
 ```
@@ -51,7 +37,7 @@ o.prior <- searchTwitter("#orlando", n=1000, maxID = "741875325752233985")
 
 
 
-###Prior to the attack###
+### Prior to the attack###
 
 
 ```r
@@ -88,7 +74,7 @@ Between 10pm - 2am, tweets with '#orlando' were coming in at a rate of
 127 tweets per hour, and 
 2.9 tweets per minute (tpm). 
 
-###During and after the attack###
+### During and after the attack###
 
 
 ```r
@@ -167,7 +153,7 @@ for (i in 1:length(o.post)) {
                                             o.post[[i]]$retweetCount, o.post[[i]]$favoriteCount))
   }
 }
-names(influencers) <- c("screenname", "twetId", "rt", "fav")
+names(influencers) <- c("screenname", "tweetId", "rt", "fav")
 ```
 
 
@@ -180,7 +166,7 @@ users <- lookupUsers(influencers$screenname)
 
 
 ```r
-influencers$followersCount <- NULL
+influencers$followers <- NULL
 for (i in 1:nrow(influencers)) {
   influencers[i, "followers"] <- users[[i]]$followersCount
 }
@@ -188,7 +174,7 @@ influencers
 ```
 
 ```
-##         screenname             twetId   rt fav followers
+##         screenname            tweetId   rt fav followers
 ## 1        peteb1974 741889518798700544    7   0       315
 ## 2      laurenmist1 741889432366817280 2774   0        71
 ## 3          muzeart 741889432085757952  442   0       563
@@ -227,7 +213,7 @@ for (i in 1:length(o.post)) {
                                             o.post[[i]]$retweetCount, o.post[[i]]$favoriteCount))
   }
 }
-names(influencers.313) <- c("screenname", "twetId", "rt", "fav")
+names(influencers.313) <- c("screenname", "tweetId", "rt", "fav")
 ```
 
 
@@ -358,7 +344,7 @@ for (i in 1:length(tweets)) {
   }
 }
 influencers.345 <- as.data.frame(influencers.345, stringsAsFactors = F)
-names(influencers.345) <- c("screenname", "twetId", "rt", "fav")
+names(influencers.345) <- c("screenname", "tweetId", "rt", "fav")
 influencers.345$rt <- as.numeric(influencers.345$rt)
 ```
 
@@ -416,7 +402,7 @@ for (i in 1:length(tweets)) {
   }
 }
 influencers.349 <- as.data.frame(influencers.349, stringsAsFactors = F)
-names(influencers.349) <- c("screenname", "twetId", "rt", "fav")
+names(influencers.349) <- c("screenname", "tweetId", "rt", "fav")
 influencers.349$rt <- as.numeric(influencers.349$rt)
 ```
 

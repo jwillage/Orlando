@@ -23,7 +23,7 @@ opts_chunk$set(echo = TRUE, cache = TRUE, cache.path = "cache/",
 
 ```{r libs}
 library(twitteR)
-library(lubridate)       
+library(lubridate)  
 library(ggplot2)
 library(scales)
 ```
@@ -128,7 +128,7 @@ for (i in 1:length(o.post)) {
                                             o.post[[i]]$retweetCount, o.post[[i]]$favoriteCount))
   }
 }
-names(influencers) <- c("screenname", "twetId", "rt", "fav")
+names(influencers) <- c("screenname", "tweetId", "rt", "fav")
 ```
 
 ```{r, eval = F}
@@ -141,7 +141,7 @@ users <- readRDS("rds/users.rds")
 ```
 
 ```{r}
-influencers$followersCount <- NULL
+influencers$followers <- NULL
 for (i in 1:nrow(influencers)) {
   influencers[i, "followers"] <- users[[i]]$followersCount
 }
@@ -167,7 +167,7 @@ for (i in 1:length(o.post)) {
                                             o.post[[i]]$retweetCount, o.post[[i]]$favoriteCount))
   }
 }
-names(influencers.313) <- c("screenname", "twetId", "rt", "fav")
+names(influencers.313) <- c("screenname", "tweetId", "rt", "fav")
 ```
 
 ```{r, eval = F} 
@@ -250,7 +250,7 @@ for (i in 1:length(tweets)) {
   }
 }
 influencers.345 <- as.data.frame(influencers.345, stringsAsFactors = F)
-names(influencers.345) <- c("screenname", "twetId", "rt", "fav")
+names(influencers.345) <- c("screenname", "tweetId", "rt", "fav")
 influencers.345$rt <- as.numeric(influencers.345$rt)
 ```
 
@@ -293,7 +293,7 @@ for (i in 1:length(tweets)) {
   }
 }
 influencers.349 <- as.data.frame(influencers.349, stringsAsFactors = F)
-names(influencers.349) <- c("screenname", "twetId", "rt", "fav")
+names(influencers.349) <- c("screenname", "tweetId", "rt", "fav")
 influencers.349$rt <- as.numeric(influencers.349$rt)
 ```
 
